@@ -1,0 +1,11 @@
+*.pyc
+.vscode
+cellsafe
+logs
+*.csv
+test.py
+*.html
+build
+dist
+main.spec
+passwords.csv
