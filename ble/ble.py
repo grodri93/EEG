@@ -2,99 +2,124 @@ import pygatt
 import logging
 
 
-DEBUG = False
-if DEBUG:
+PYGATT_DEBUG = False
+if PYGATT_DEBUG:
     logging.basicConfig()
     logging.getLogger('pygatt').setLevel(logging.DEBUG)
+
+BLE_DEBUG = True
+if BLE_DEBUG:
+    logging.basicConfig()
+    logging.getLogger('ble').setLevel(logging.DEBUG)
 
 ADDRESS_TYPE = pygatt.BLEAddressType.random
 
 
-class BLEDongle(object):
+class BLEAdapter(object):
     """A wrapper for the BGAPI backend from the pygatt library."""
-
     def __init__(self):
-        # BGAPI variables
-        self.adapter = pygatt.BGAPIBackend()
-        # BLEDongle variables
-        self.connected_device = None
-        self.connected_device_rssi = None
-        self.scanned_devices = []
+        self.oldadapter = pygatt.BGAPIBackend()
 
-    def connect_dongle(self):
-        """Connect to BLED USB dongle."""
+    @property
+    def nearby_devices(self):
         try:
-            self.adapter.start()
+            devices = NearbyDevices(self.oldadapter.scan(timeout=2,
+                                                         active=False))
+            logging.info('Found %i devices nearby.' % len(devices))
+            return devices
+        except Exception:
+            logging.debug('Error scanning devices.')
+            return None
+
+    def start(self):
+        try:
+            self.oldadapter.start()
+            logging.info('Connected to the ble adapter.')
             return True
-        except:
+        except pygatt.backends.exceptions.BGAPIError:
+            logging.debug('Connected to ble adapter.')
             return False
 
-    def disconnect_dongle(self):
-        """Disconnect to BLED USB dongle."""
+    def stop(self):
         try:
             self.adapter.stop()
+            logging.info('Error connecting to ble adapter.')
             return True
-        except:
+        except pygatt.backends.exceptions.BGAPIError:
+            logging.debug('Error disconnecting from ble adapter.')
             return False
 
-    def subscribe(self):
-        """Blank, meant to be overriding."""
-        pass
-
-    def connect(self, address):
-        """Connect to BLE device directly."""
+    def connect(self, addr):
         try:
-            if self.adapter.adapter_started():
-                device = self.adapter.connect(address, address_type=ADDRESS_TYPE)
-                self.connected_device = device
-                return True
-            else:
-                self.connected_device = None
-                return False
-        except:
-            self.connected_device = None
-            return False
+            device = Device(self.oldadapter.connect(addr,
+                                                    address_type=ADDRESS_TYPE))
+            logging.info('Connected to device Address: %s.' %  addr)
+            return device
+        except Exception:
+            logging.debug('Failed to connect to Address: %s.' % addr)
+            return None
+
+    def is_started(self):
+        return self.adapter.adapter_started()
+
+
+class Device(object):
+
+    def __init__(self, connection):
+        self.connection = connection
+
+    @property
+    def rssi(self):
+        try:
+            rssi = self.connection.get_rssi()
+            logging.info('Received rssi: %i' % rssi)
+            return rssi
+        except Exception:
+            logging.debug('Failed to retrieve rssi.')
 
     def disconnect(self):
-        """Disconnect from the current connected BLE device."""
         try:
-            self.connected_device.disconnect()
-            self.connected_device = None
-            return True
-        except:
-            self.connected_device = None
-            return False
+            self.connection.disconnect()
+            logging.info('Disconnected device.')
+        except Exception:
+            logging.debug('Failed to disconnected device.')
 
-    def scan(self):
-        """Do one scan."""
-        try:
-            if self.adapter.adapter_started():
-                self.scanned_devices = self.adapter.scan(timeout=2, active=False)
-                return True
-            else:
-                self.scanned_devices = []
-                return False
-        except:
-            self.scanned_devices = []
-            return False
+    def is_connected(self):
+        return self.connection.connected()
 
+
+class NearbyDevices(object):
+
+    def __init__(self, scanresults):
+        self.scanresults = scanresults
+
+    def __len__(self):
+        return len(self.scanresults)
+
+    def __getitem__(self, index):
+        if index >= len(self):
+            raise IndexError
+        return ScannedDevice(self.scanresults[index])
+
+
+class ScannedDevice(object):
+
+    def __init__(self, device):
+        self.device = device
+
+    @property
+    def name(self):
+        return self.device['name']
+
+    @property
     def rssi(self):
-        """Get the most current rssi value."""
-        try:
-            self.connected_device_rssi = self.connected_device.get_rssi()
-            return True
-        except:
-            self.connected_device_rssi = -101
-            return False
+        return self.device['rssi']
 
-    def device_connected(self):
-        if self.connected_device is None:
-            return False
-        else:
-            return self.connected_device.connected()
-
-    def dongle_connected(self):
-        return self.adapter.adapter_started()
+    @property
+    def manufacturer_specific_data(self):
+        packet_data = self.device['packet_data']
+        adv_packet = packet_data['connectable_advertisement_packet']
+        return adv_packet['manufacturer_specific_data']
 
 
 if __name__ == '__main__':
