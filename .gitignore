@@ -3,7 +3,6 @@
 cellsafe
 logs
 *.csv
-test.py
 *.html
 build
 dist
