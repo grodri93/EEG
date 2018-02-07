@@ -19,6 +19,7 @@ class BLEAdapter(object):
     """A wrapper for the BGAPI backend from the pygatt library."""
     def __init__(self):
         self.oldadapter = pygatt.BGAPIBackend()
+        self.connected_device = None
 
     @property
     def nearby_devices(self):
@@ -50,9 +51,12 @@ class BLEAdapter(object):
             return False
 
     def connect(self, addr):
+        print('trying to connect')
         try:
             device = Device(self.oldadapter.connect(addr,
                                                     address_type=ADDRESS_TYPE))
+            self.connected_device = device
+            print('connected')
             logging.info('Connected to device Address: %s.' %  addr)
             return device
         except Exception:
@@ -87,6 +91,12 @@ class Device(object):
     def is_connected(self):
         return self.connection.connected()
 
+    def subscribe(self, char, callback):
+        self.connection.subscribe(char, callback)
+
+    def start(self, addr, command):
+        self.connection.char_write(addr, command)
+
 
 class NearbyDevices(object):
 
@@ -117,9 +127,12 @@ class ScannedDevice(object):
 
     @property
     def manufacturer_specific_data(self):
-        packet_data = self.device['packet_data']
-        adv_packet = packet_data['connectable_advertisement_packet']
-        return adv_packet['manufacturer_specific_data']
+        try:
+            packet_data = self.device['packet_data']
+            adv_packet = packet_data['connectable_advertisement_packet']
+            return adv_packet['manufacturer_specific_data']
+        except:
+            return None
 
 
 if __name__ == '__main__':
